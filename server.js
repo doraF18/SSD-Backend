@@ -4,6 +4,8 @@ const app = express();
 const admin = require('firebase-admin');
 const cors = require('cors');
 
+console.log("Starting the app!");
+
 // Initialize Firebase Admin SDK
 const serviceAccount = require('./firebase-admin.json');
 admin.initializeApp({
