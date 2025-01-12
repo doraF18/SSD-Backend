@@ -4,13 +4,37 @@ const app = express();
 const admin = require('firebase-admin');
 const cors = require('cors');
 
+process.stdout.write("Direct output to stdout\n");
 console.log("Starting the app!");
+console.log(process.env.ON_HEROKU);
 
-// Initialize Firebase Admin SDK
-const serviceAccount = require('./firebase-admin.json');
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+if (process.env.ON_HEROKU === "True"){ 
+  console.log("On Heroku"); 
+
+  const serviceAccountJson = {
+    type: "service_account",
+    project_id: process.env.PROJECT_ID,
+    private_key_id: process.env.PRIVATE_KEY_ID,
+    private_key: process.env.PRIVATE_KEY.replace(/\\n/g, '\n'), // Ensure correct formatting
+    client_email: process.env.CLIENT_EMAIL,
+    client_id: process.env.CLIENT_ID,
+    auth_uri: process.env.AUTH_URI,
+    token_uri: process.env.TOKEN_URI,
+    auth_provider_x509_cert_url: process.env.AUTH_PROVIDER_X509_CERT_URL,
+    client_x509_cert_url: process.env.CLIENT_X509_CERT_URL,
+    universe_domain: process.env.UNIVERSE_DOMAIN
+  };
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccountJson),
+  });
+}
+else{
+  const serviceAccount = require('./firebase-admin.json');
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
 const db = admin.firestore();
 
 app.use(bodyParser.json());
@@ -192,7 +216,7 @@ app.post('/api/unattend-event', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-const port = process.env.PORT ? process.env.PORT : 3001;
+const port = process.env.PORT ||  3001;
 
 
 // Start the server
