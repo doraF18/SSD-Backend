@@ -3,6 +3,41 @@ const bodyParser = require('body-parser');
 const app = express();
 const admin = require('firebase-admin');
 const cors = require('cors');
+const nodemailer = require('nodemailer');
+require('dotenv').config();
+
+
+// Configure the transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail', // Use your email service
+  auth: {
+    user: process.env.EMAIL_USER, // Email address from environment variables
+    pass: process.env.EMAIL_PASS, // Email password or app password from environment variables
+  },
+});
+
+// Email-sending utility function
+const sendEmail = async (to, subject, text, html) => {
+  try {
+    const mailOptions = {
+      from: process.env.EMAIL_USER, // Sender's email
+      to, // Recipient's email
+      subject, // Subject line
+      text, // Plain text version
+      html, // HTML version (optional)
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Email sent: ' + info.response);
+    return { success: true, info };
+  } catch (error) {
+    console.error('Error sending email:', error);
+    return { success: false, error };
+  }
+};
+
+
+
 
 process.stdout.write("Direct output to stdout\n");
 console.log("Starting the app!");
@@ -89,8 +124,8 @@ app.post('/api/events', verifyFirebaseToken, async (req, res) => {
 
   try {
     const eventData = {
-      title,
-      description,
+      event_title,
+      event_details,
       userId: req.user.uid,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
@@ -122,6 +157,7 @@ app.get('/api/events', verifyFirebaseToken, async (req, res) => {
 });
 
 // New endpoint to add event to user's history
+// Endpoint to add event to user's history and send confirmation email
 app.post('/api/attend-event', verifyFirebaseToken, async (req, res) => {
   const { eventId } = req.body;
 
@@ -139,18 +175,42 @@ app.post('/api/attend-event', verifyFirebaseToken, async (req, res) => {
 
     // Update the user's history field with the event ID
     await userRef.update({
-      history: admin.firestore.FieldValue.arrayUnion(eventId), // Add the event ID to the history array
+      history: admin.firestore.FieldValue.arrayUnion(eventId),
     });
 
-    res.status(200).json({ message: 'Event added to user history.' });
+    // Get event details
+    const eventDoc = await db.collection('events').doc(eventId).get();
+    if (!eventDoc.exists) {
+      return res.status(404).json({ message: 'Event not found.' });
+    }
+
+    const eventDetails = eventDoc.data();
+    const emailSubject = `Event Attendance Confirmation: ${eventDetails.event_title}`;
+    const emailBody = `
+      <p>Dear ${req.user.email},</p>
+      <p>Thank you for attending the event: <strong>${eventDetails.event_title}</strong>.</p>
+      <p>Event Details:</p>
+      <ul>
+        <li><strong>Description:</strong> ${eventDetails.event_details}</li>
+      </ul>
+      <p>We hope you enjoy it!</p>
+      <p>Best regards,<br>Your Events Team</p>
+    `;
+
+    // Send confirmation email
+    const emailResult = await sendEmail(req.user.email, emailSubject, '', emailBody);
+
+    if (!emailResult.success) {
+      console.error('Failed to send confirmation email:', emailResult.error);
+    }
+
+    res.status(200).json({ message: 'Event added to user history and email sent.' });
   } catch (error) {
     console.error('Error attending event:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
-app.get('/', (req, res) => {
-  res.send('Welcome to the backend API!');
-});
+
 
 // New endpoint to search events by title
 app.get('/api/search-events', verifyFirebaseToken, async (req, res) => {
